@@ -1,0 +1,562 @@
+# Repository: hurricane-claim-assistant
+#
+# Files:
+# - README.md
+# - public/assistant.html
+# - backend/cloudflare-worker.js         (optional grounding backend)
+# - backend/wrangler.toml                (Cloudflare Worker config)
+# - .github/workflows/deploy-pages.yml   (optional: GitHub Pages deploy)
+# - LICENSE (MIT)
+
+================================================================================
+README.md
+================================================================================
+# Hurricane Claim Assistant (Demo)
+
+A minimal, embeddable Q&A assistant for the hurricane-damage landing page.  
+- Clean header, gold “Ask” button, gold suggested questions
+- Contact info and “Call 813-445-5780” CTA
+- Relevance guard with your chosen out-of-scope reply
+- Demo mode (no backend) so anyone can try it immediately
+- Optional Cloudflare Worker backend that fetches and grounds answers strictly to the landing page
+
+Live Demo (GitHub Pages)
+- After enabling GitHub Pages (instructions below), your demo URL will be:
+  https://<your-username>.github.io/hurricane-claim-assistant/public/assistant.html
+
+Embed on the landing page
+Paste this where you want the assistant to appear:
+<iframe src="https://<your-username>.github.io/hurricane-claim-assistant/public/assistant.html" style="width:100%;max-width:420px;height:520px;border:0;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.12);"></iframe>
+
+--------------------------------------------------------------------------------
+Local test
+--------------------------------------------------------------------------------
+1) Download or clone this repo
+2) Open public/assistant.html in your browser
+3) Click any gold suggested question or type your own and press “Ask”
+4) Answers appear in the large box at the top. Irrelevant questions get:
+   “I’m sorry. That isn’t a relevant question.”
+
+Note: In demo mode, answers are sample, not grounded to the live page.
+
+--------------------------------------------------------------------------------
+Optional: Deploy GitHub Pages (share a live link)
+--------------------------------------------------------------------------------
+1) Commit and push this repo to GitHub
+2) Settings → Pages → Build and deployment → Source: “GitHub Actions”
+3) The included workflow (.github/workflows/deploy-pages.yml) will publish /public
+4) Share the URL:
+   https://<your-username>.github.io/hurricane-claim-assistant/public/assistant.html
+
+--------------------------------------------------------------------------------
+Optional: Real answers (Cloudflare Worker + OpenAI)
+--------------------------------------------------------------------------------
+The backend fetches and caches your landing page content, extracts relevant snippets,
+and asks OpenAI to answer strictly from that text. It also enforces the relevance gate
+server-side so out-of-scope questions get your exact message.
+
+What you need
+- Cloudflare account + Wrangler CLI
+- OpenAI API key
+
+Steps
+1) Edit backend/wrangler.toml:
+   - Set name to something unique
+2) Deploy the Worker:
+   - npm install -g wrangler
+   - cd backend
+   - wrangler login
+   - wrangler deploy
+   - In Cloudflare dashboard → Worker → Settings → Variables, add:
+     - OPENAI_API_KEY = your key
+     - PAGE_URL = https://www.yourpropertyadvocate.com/lp/hurricane-damage-ppc_lp/
+3) Copy the Worker URL (e.g., https://hca-demo.<your-subdomain>.workers.dev)
+4) Update public/assistant.html:
+   - Set DEMO_MODE = false
+   - Set BACKEND_URL to https://hca-demo.<your-subdomain>.workers.dev/api/assistant-answer
+5) Refresh and test
+
+Notes
+- The Worker uses simple keyword retrieval across the page text for reliability and speed.
+- It adds a short legal-safe instruction and will refuse anything not supported by the page.
+- You can upgrade retrieval later (embeddings/vector DB) if needed.
+
+--------------------------------------------------------------------------------
+License
+--------------------------------------------------------------------------------
+MIT — see LICENSE.
+
+================================================================================
+public/assistant.html
+================================================================================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Hurricane Claim Assistant</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --navy: #173a63;
+      --navy-700: #102c4a;
+      --gold: #c8922b;
+      --gold-700: #a6761e;
+      --bg: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --border: #e2e8f0;
+      --answer-bg: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; color: var(--text); background: var(--bg); }
+    .wrap { max-width: 420px; margin: 0 auto; padding: 14px; }
+    .card { border: 1px solid var(--border); border-radius: 16px; background: var(--bg); overflow: hidden; box-shadow: 0 10px 30px rgba(2,6,23,0.06); }
+    .header { display: grid; grid-template-columns: 56px 1fr auto; gap: 12px; align-items: center; padding: 16px; border-bottom: 1px solid var(--border); background: linear-gradient(180deg, #ffffff, #f5f8fd); }
+    .avatar { width: 56px; height: 56px; border-radius: 50%; border: 2px solid #e6efff; display: grid; place-items: center; background: #fff; overflow: hidden; }
+    .title { margin: 0; font-size: 16px; font-weight: 800; color: var(--navy); }
+    .badge { background: #f0f6ff; color: var(--navy); border: 1px solid #d7e6ff; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .body { padding: 16px; display: grid; gap: 12px; }
+    .answer-box { background: var(--answer-bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-height: 140px; max-height: 240px; overflow: auto; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+    .answer-box.empty { color: var(--muted); }
+    .suggestions h3 { margin: 0 0 8px 0; font-size: 13px; color: var(--navy); }
+    .suggestions ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .suggestions li { background: var(--gold); color: #1f2937; border: 1px solid var(--gold-700); border-radius: 10px; padding: 10px 12px; cursor: pointer; font-weight: 600; transition: transform .05s ease, box-shadow .15s ease, background .15s ease; }
+    .suggestions li:hover { background: var(--gold-700); color: #111827; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+    .suggestions li:active { transform: translateY(1px); }
+    form { display: grid; gap: 8px; }
+    .input-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: stretch; }
+    textarea { resize: vertical; min-height: 46px; max-height: 120px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; line-height: 1.35; outline: none; transition: box-shadow .15s ease, border-color .15s ease; }
+    textarea:focus { border-color: #cbdcfb; box-shadow: 0 0 0 3px rgba(23,58,99,0.15); }
+    button { background: var(--gold); color: #1f2937; border: 0; border-radius: 10px; padding: 0 16px; font-size: 14px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; min-width: 110px; transition: background .15s ease, transform .05s ease; }
+    button:hover { background: var(--gold-700); }
+    button:active { transform: translateY(1px); }
+    button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
+    .meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; padding: 0 2px; }
+    .cta { display: grid; gap: 8px; padding: 0 2px; }
+    .call-btn { display: inline-block; text-align: center; background: var(--navy); color: #fff; padding: 10px 14px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 14px; }
+    .call-btn:hover { background: var(--navy-700); }
+    .contact { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #ffffff; display: grid; gap: 8px; font-size: 14px; }
+    .contact a { color: var(--navy); text-decoration: none; font-weight: 700; }
+    .contact a:hover { text-decoration: underline; }
+    .fineprint { font-size: 11px; color: var(--muted); line-height: 1.35; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border-width: 0; }
+    .spinner { width: 14px; height: 14px; border: 2px solid rgba(0,0,0,0.2); border-top-color: rgba(0,0,0,0.7); border-radius: 50%; animation: spin 1s linear infinite; margin-right: 8px; }
+    .tiny-link { color: var(--navy); font-size: 12px; text-decoration: none; }
+    .tiny-link:hover { text-decoration: underline; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 420px) { .wrap { padding: 12px; } .header { padding: 14px; } .body { padding: 14px; } }
+  </style>
+</head>
+<body>
+  <div class="wrap" role="application" aria-label="Hurricane Claim Assistant">
+    <div class="card" role="region" aria-labelledby="assistant-title">
+      <div class="header">
+        <div class="avatar" aria-hidden="true">
+          <!-- Neutral professional avatar (SVG) -->
+          <svg viewBox="0 0 64 64" width="44" height="44" aria-hidden="true">
+            <defs>
+              <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#173a63"/>
+                <stop offset="1" stop-color="#c8922b"/>
+              </linearGradient>
+            </defs>
+            <circle cx="32" cy="32" r="32" fill="url(#g)" opacity="0.10"/>
+            <circle cx="32" cy="24" r="12" fill="#f2d3b1"/>
+            <path d="M20 46c0-6.6 24-6.6 24 0v6H20v-6z" fill="#dbe6f7"/>
+            <path d="M20 22c0-8 8-12 12-12s12 4 12 12v3c0 1.7-1.3 3-3 3h-1c-1.7 0-3-1.3-3-3v-2c0 4-3 7-7 7s-7-3-7-7v2c0 1.7-1.3 3-3 3h-1c-1.7 0-3-1.3-3-3v-3z" fill="#2b3a67"/>
+          </svg>
+        </div>
+        <div><h1 id="assistant-title" class="title">Hurricane Claim Assistant</h1></div>
+        <div class="badge" aria-label="Free consultation">Free Consultation</div>
+      </div>
+
+      <div class="body">
+        <div id="answer" class="answer-box empty" aria-live="polite"></div>
+
+        <form id="ask-form">
+          <label class="sr-only" for="question">Your question</label>
+          <div class="input-row">
+            <textarea id="question" name="question" placeholder="Type your question…" required></textarea>
+            <button id="submit-btn" type="submit" aria-label="Submit question">
+              <span id="btn-spinner" class="spinner" style="display:none;"></span>
+              <span id="btn-text">Ask</span>
+            </button>
+          </div>
+          <div><a id="show-suggestions" class="tiny-link" href="#">Show suggested questions</a></div>
+        </form>
+
+        <div class="meta">
+          <span class="notice">Answers are grounded to this landing page.</span>
+          <span id="status" aria-live="polite"></span>
+        </div>
+
+        <div class="cta">
+          <a class="call-btn" href="tel:8134455780" aria-label="Call now">Call 813-445-5780</a>
+          <div class="contact" aria-label="Contact information">
+            <div><strong>Phone:</strong> <a id="contact-phone" href="tel:8134455780">813-445-5780</a></div>
+            <div><strong>Office:</strong> <a id="contact-map" href="https://maps.google.com/?q=5331%20Primrose%20Lake%20Circle%2C%20Suite%20212%2C%20Tampa%2C%20FL%2033647" target="_blank" rel="noopener">5331 Primrose Lake Circle, Suite 212, Tampa, FL 33647</a></div>
+          </div>
+          <div class="fineprint">General information only—not legal advice.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // CONFIG
+    const DEMO_MODE = true; // set to false after you deploy the backend
+    const BACKEND_URL = "https://your-worker-subdomain.workers.dev/api/assistant-answer"; // replace after deploying worker
+    const IRRELEVANT_MESSAGE = "I’m sorry. That isn’t a relevant question.";
+
+    // Suggested questions
+    const SUGGESTED_QUESTIONS = [
+      "Do you charge any upfront fees?",
+      "How does the free consultation work?",
+      "Do you help if my claim was denied or underpaid?",
+      "What areas do you serve in Tampa Bay?",
+      "What kind of results have you achieved?"
+    ];
+
+    // Relevance guard
+    const RELEVANCE_KEYWORDS = [
+      "hurricane","storm","wind","roof","leak","damage","water","flood","property","property damage",
+      "insurance","claim","claims","denied","underpaid","low offer","adjuster","attorney","law","law firm",
+      "consultation","free consultation","no fees","zero upfront","contingency",
+      "tampa","pinellas","hillsborough","pasco","tampa bay","florida",
+      "karkatselos","your property advocate","results","successes",
+      "office","address","location","contact","call","phone","813","map"
+    ];
+    function isRelevant(q) { const qs = (q || "").toLowerCase(); return RELEVANCE_KEYWORDS.some(kw => qs.includes(kw)); }
+
+    function setLoading(loading) {
+      const btn = document.getElementById("submit-btn");
+      const sp = document.getElementById("btn-spinner");
+      const bt = document.getElementById("btn-text");
+      btn.disabled = loading; sp.style.display = loading ? "inline-block" : "none"; bt.textContent = loading ? "Thinking…" : "Ask";
+    }
+
+    function showAnswer(text, opts = {}) {
+      const box = document.getElementById("answer");
+      box.classList.toggle("empty", !text);
+      if (!text) { renderSuggestions(); }
+      else {
+        box.textContent = text;
+        box.style.borderColor = "var(--border)";
+        box.style.background = "var(--answer-bg)";
+        if (opts.type === "error") { box.style.borderColor = "#fde2e2"; box.style.background = "#fff7f7"; }
+      }
+    }
+
+    function setStatus(msg) { document.getElementById("status").textContent = msg || ""; }
+
+    async function askBackend(question) {
+      const payload = { question };
+      const res = await fetch(BACKEND_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!res.ok) { const t = await res.text().catch(() => ""); throw new Error("Backend error: " + (t || res.status)); }
+      const data = await res.json(); return data.answer || "";
+    }
+
+    // Demo answers (sample copy)
+    function demoAnswer(question) {
+      const q = question.toLowerCase();
+      if (q.includes("fee") || q.includes("fees") || q.includes("upfront") || q.includes("contingency") || q.includes("cost") || q.includes("price")) {
+        return "Consultation is free. The firm typically operates on a contingency basis—no attorney fees unless there’s a recovery.";
+      }
+      if (q.includes("consultation")) { return "Schedule your free consultation from this page or by calling 813-445-5780. We’ll review your situation and outline next steps."; }
+      if (q.includes("denied") || q.includes("underpaid") || q.includes("low offer")) { return "Yes—if your hurricane damage claim was denied or underpaid, the firm can evaluate the decision and push for a fair result."; }
+      if (q.includes("area") || q.includes("serve") || q.includes("tampa") || q.includes("pinellas") || q.includes("hillsborough") || q.includes("pasco")) { return "The page focuses on the Tampa Bay Area, including Hillsborough, Pinellas, and Pasco counties."; }
+      if (q.includes("result") || q.includes("success")) { return "Recent success themes include full roof replacements secured and payment for interior water damages after reversing insurer denials."; }
+      if (q.includes("address") || q.includes("office") || q.includes("location")) { return "Office: 5331 Primrose Lake Circle, Suite 212, Tampa, FL 33647."; }
+      if (q.includes("call") || q.includes("phone") || q.includes("contact")) { return "Call 813-445-5780 or use the page form to schedule your free consultation."; }
+      return "This page covers hurricane-claim help, free consultations, the Tampa Bay service area, and examples of results. Ask about any of these topics.";
+    }
+
+    function renderSuggestions() {
+      const box = document.getElementById("answer");
+      box.classList.add("empty");
+      box.innerHTML = `
+        <div class="suggestions">
+          <h3>Suggested questions</h3>
+          <ul>
+            ${SUGGESTED_QUESTIONS.map(q => `<li data-q="${q.replace(/"/g, '&quot;')}">${q}</li>`).join("")}
+          </ul>
+        </div>
+      `;
+      box.querySelectorAll("li").forEach(li => {
+        li.addEventListener("click", () => {
+          const q = li.getAttribute("data-q");
+          const input = document.getElementById("question");
+          input.value = q;
+          document.getElementById("ask-form").requestSubmit();
+        });
+      });
+    }
+
+    document.getElementById("ask-form").addEventListener("submit", async (e) => {
+      e.preventDefault(); setStatus("");
+      const input = document.getElementById("question"); const question = input.value.trim(); if (!question) return;
+      if (!isRelevant(question)) { showAnswer("I’m sorry. That isn’t a relevant question."); return; }
+      setLoading(true);
+      try {
+        let answer; if (DEMO_MODE) { await new Promise(r => setTimeout(r, 400)); answer = demoAnswer(question); } else { answer = await askBackend(question); }
+        showAnswer(answer); setStatus("Answered");
+      } catch (err) { console.error(err); showAnswer("Sorry—something went wrong. Please try again.", { type: "error" }); setStatus("Error"); }
+      finally { setLoading(false); input.focus(); input.select(); }
+    });
+
+    document.getElementById("show-suggestions").addEventListener("click", (e) => { e.preventDefault(); renderSuggestions(); });
+
+    // Initial state
+    renderSuggestions();
+  </script>
+</body>
+</html>
+
+================================================================================
+backend/cloudflare-worker.js
+================================================================================
+/**
+ * Cloudflare Worker — Simple grounded Q&A for the landing page
+ * - Fetches and caches page text for 24h
+ * - Simple keyword retrieval over chunks
+ * - Calls OpenAI to answer strictly from context
+ *
+ * Env Vars (set in Cloudflare dashboard):
+ * - OPENAI_API_KEY
+ * - PAGE_URL (default in code if not set)
+ */
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // CORS (allow embedding domain if needed; * for demo)
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: corsHeaders(),
+      });
+    }
+
+    if (url.pathname === "/api/assistant-answer" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const question = (body?.question || "").trim();
+        if (!question) return json({ error: "Missing question" }, 400);
+
+        // Relevance guard (server-side)
+        const relevant = isRelevant(question);
+        if (!relevant) {
+          return json({ answer: "I’m sorry. That isn’t a relevant question." });
+        }
+
+        const pageUrl = env.PAGE_URL || "https://www.yourpropertyadvocate.com/lp/hurricane-damage-ppc_lp/";
+        const pageText = await getPageText(pageUrl, request, ctx);
+
+        // Retrieve relevant snippets
+        const snippets = retrieveSnippets(pageText, question, 6, 900);
+        const context = [
+          "Source: Hurricane damage landing page content.",
+          "Phone: 813-445-5780. Office: 5331 Primrose Lake Circle, Suite 212, Tampa, FL 33647.",
+          "Key themes: Free consultation, zero upfront cost, focus on property damage, Tampa Bay area (Hillsborough, Pinellas, Pasco), recent results include roof replacements and interior water damage payments."
+        ].concat(snippets).join("\n\n---\n\n");
+
+        const prompt = buildPrompt(question, context);
+        const answer = await callOpenAI(prompt, env.OPENAI_API_KEY);
+        return new Response(JSON.stringify({ answer }), {
+          status: 200,
+          headers: { "content-type": "application/json", ...corsHeaders() },
+        });
+      } catch (err) {
+        return json({ error: "Server error" }, 500);
+      }
+    }
+
+    return new Response("OK", { status: 200, headers: corsHeaders() });
+  },
+};
+
+function corsHeaders() {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type, authorization",
+  };
+}
+function json(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "content-type": "application/json", ...corsHeaders() },
+  });
+}
+
+// Basic relevance keywords
+const RELEVANCE_KEYWORDS = [
+  "hurricane","storm","wind","roof","leak","damage","water","flood","property","property damage",
+  "insurance","claim","claims","denied","underpaid","low offer","adjuster","attorney","law","law firm",
+  "consultation","free consultation","no fees","zero upfront","contingency",
+  "tampa","pinellas","hillsborough","pasco","tampa bay","florida",
+  "karkatselos","your property advocate","results","successes",
+  "office","address","location","contact","call","phone","813","map"
+];
+function isRelevant(q) {
+  const qs = q.toLowerCase();
+  return RELEVANCE_KEYWORDS.some(kw => qs.includes(kw));
+}
+
+// Fetch and cache page text for 24h
+async function getPageText(pageUrl, request, ctx) {
+  const cache = caches.default;
+  const cacheKey = new Request("https://cache-key/" + btoa(pageUrl), { method: "GET" });
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached.text();
+
+  const res = await fetch(pageUrl, { headers: { "user-agent": "AssistantBot/1.0" } });
+  const html = await res.text();
+  const text = extractText(html);
+  ctx.waitUntil(cache.put(cacheKey, new Response(text, { headers: { "cache-control": "max-age=86400" } })));
+  return text;
+}
+
+// Strip tags and boilerplate
+function extractText(html) {
+  // remove scripts and styles
+  html = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ");
+  // replace breaks with newlines
+  html = html.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<\/h[1-6]>/gi, "\n");
+  // strip tags
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  return text;
+}
+
+// Chunk text and score by keyword overlap
+function retrieveSnippets(text, question, maxSnippets = 6, chunkSize = 900) {
+  const chunks = chunk(text, chunkSize, 200);
+  const qTokens = tokenize(question);
+  const scored = chunks.map((c, i) => ({ i, score: scoreChunk(c, qTokens), c }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, maxSnippets).map(s => s.c);
+}
+function chunk(str, size, overlap = 0) {
+  const out = [];
+  for (let i = 0; i < str.length; i += size - overlap) out.push(str.slice(i, i + size));
+  return out;
+}
+function tokenize(s) {
+  return s.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+function scoreChunk(c, qTokens) {
+  const lc = c.toLowerCase();
+  let score = 0;
+  for (const t of qTokens) { if (lc.includes(t)) score += 1; }
+  return score;
+}
+
+function buildPrompt(question, context) {
+  return [
+    { role: "system", content:
+      "You are the Hurricane Claim Assistant for a hurricane-damage landing page. " +
+      "Answer concisely (2–5 sentences). Use ONLY the provided context. " +
+      "If the answer isn’t supported by the context, reply exactly: \"I’m sorry. That isn’t a relevant question.\" " +
+      "Include a gentle note: \"General information—not legal advice.\" " +
+      "If appropriate, you may suggest calling 813-445-5780 to schedule a free consultation."
+    },
+    { role: "user", content:
+      "Context:\n" + context + "\n\nQuestion:\n" + question
+    }
+  ];
+}
+
+async function callOpenAI(messages, apiKey) {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "content-type": "application/json", "authorization": `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages,
+      temperature: 0.2,
+      max_tokens: 220,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error("OpenAI error: " + err);
+  }
+  const data = await res.json();
+  const answer = data?.choices?.[0]?.message?.content?.trim() || "";
+  return answer || "I’m sorry. That isn’t a relevant question.";
+}
+
+================================================================================
+backend/wrangler.toml
+================================================================================
+name = "hca-demo"
+main = "cloudflare-worker.js"
+compatibility_date = "2024-11-20"
+
+# Set environment variables in the Cloudflare Dashboard after deploy:
+# - OPENAI_API_KEY
+# - PAGE_URL
+
+# For local testing:
+# wrangler dev
+
+================================================================================
+.github/workflows/deploy-pages.yml
+================================================================================
+name: Deploy GitHub Pages
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+================================================================================
+LICENSE
+================================================================================
+MIT License
+
+Copyright (c) 2025
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
