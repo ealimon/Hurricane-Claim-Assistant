@@ -21,19 +21,42 @@
       background: var(--bg);
       color: var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-    }/* Compact, centered widget */
-.wrap { max-width: 420px; margin: 0 auto; padding: 14px; }
+    }.wrap { max-width: 420px; margin: 0 auto; padding: 14px; }
 .widget {
   border: 1px solid var(--border);
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 10px 30px rgba(2,6,23,0.06);
-  padding: 16px;
+  padding: 12px 16px 16px 16px;
   display: grid;
   gap: 12px;
 }
 
-/* Answer area with suggestions */
+.titlebar {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 2px solid #e6efff;
+  background: #fff;
+  display: grid; place-items: center;
+  overflow: hidden;
+}
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--navy);
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+}
+
 .answer-box {
   background: var(--answer-bg);
   border: 1px solid var(--border);
@@ -46,9 +69,9 @@
   line-height: 1.5;
   white-space: pre-wrap;
 }
+.answer-box.suggestions-mode { max-height: none; overflow: visible; }
 .answer-box.empty { color: var(--muted); }
 
-/* Suggested questions (gold, same as Ask button) */
 .suggestions h3 { margin: 0 0 8px 0; font-size: 13px; color: var(--navy); }
 .suggestions ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .suggestions li {
@@ -60,13 +83,18 @@
   cursor: pointer;
   font-weight: 600;
   transition: transform .05s ease, box-shadow .15s ease, background .15s ease;
+  word-wrap: break-word;
 }
 .suggestions li:hover { background: var(--gold-700); color: #111827; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
 .suggestions li:active { transform: translateY(1px); }
 
-/* Input row */
 form { display: grid; gap: 8px; }
-.input-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: stretch; }
+.input-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto; /* textarea | Ask | Clear */
+  gap: 8px;
+  align-items: stretch;
+}
 textarea {
   resize: vertical;
   min-height: 46px;
@@ -80,9 +108,8 @@ textarea {
   transition: box-shadow .15s ease, border-color .15s ease;
 }
 textarea:focus { border-color: #cbdcfb; box-shadow: 0 0 0 3px rgba(23,58,99,0.15); }
+
 button {
-  background: var(--gold);
-  color: #1f2937;
   border: 0;
   border-radius: 10px;
   padding: 0 16px;
@@ -93,11 +120,27 @@ button {
   align-items: center;
   justify-content: center;
   min-width: 110px;
-  transition: background .15s ease, transform .05s ease;
+  transition: background .15s ease, transform .05s ease, color .15s ease, border-color .15s ease;
 }
-button:hover { background: var(--gold-700); }
-button:active { transform: translateY(1px); }
-button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
+/* Ask (primary) */
+#submit-btn {
+  background: var(--gold);
+  color: #1f2937;
+}
+#submit-btn:hover { background: var(--gold-700); }
+#submit-btn:active { transform: translateY(1px); }
+#submit-btn:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
+
+/* Clear (secondary) */
+#clear-btn {
+  min-width: 72px;
+  padding: 0 12px;
+  background: #fff;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+#clear-btn:hover { color: #0f172a; border-color: #cbd5e1; background: #f8fafc; }
+#clear-btn:active { transform: translateY(1px); }
 
 .spinner {
   width: 14px; height: 14px;
@@ -110,7 +153,38 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Visually hidden (fix for previous snippet) */
+.footer {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+.firm-name { font-weight: 800; color: var(--navy); font-size: 14px; }
+.call-btn {
+  display: inline-block;
+  text-align: center;
+  background: var(--navy);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 14px;
+}
+.call-btn:hover { background: #102c4a; }
+.contact {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #ffffff;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+.contact a { color: var(--navy); text-decoration: none; font-weight: 700; }
+.contact a:hover { text-decoration: underline; }
+.disclaimer { font-size: 11px; color: var(--muted); }
+
 .sr-only {
   position: absolute;
   width: 1px; height: 1px;
@@ -122,8 +196,27 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
 </head>
 <body>
   <div class="wrap">
-    <div class="widget" role="application" aria-label="Hurricane Claim Assistant">
-      <div id="answer" class="answer-box empty" aria-live="polite"></div>  <form id="ask-form">
+    <div class="widget" role="application" aria-labelledby="assistant-title">
+      <div class="titlebar">
+        <div class="avatar" aria-hidden="true">
+          <!-- Simple avatar icon (inline SVG). Replace with a logo if desired. -->
+          <svg viewBox="0 0 64 64" width="36" height="36" aria-hidden="true">
+            <defs>
+              <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#173a63"/>
+                <stop offset="1" stop-color="#c8922b"/>
+              </linearGradient>
+            </defs>
+            <circle cx="32" cy="32" r="32" fill="url(#g)" opacity="0.10"/>
+            <circle cx="32" cy="24" r="12" fill="#f2d3b1"/>
+            <path d="M20 46c0-6.6 24-6.6 24 0v6H20v-6z" fill="#dbe6f7"/>
+            <path d="M20 22c0-8 8-12 12-12s12 4 12 12v3c0 1.7-1.3 3-3 3h-1c-1.7 0-3-1.3-3-3v-2c0 4-3 7-7 7s-7-3-7-7v2c0 1.7-1.3 3-3 3h-1c-1.7 0-3-1.3-3-3v-3z" fill="#2b3a67"/>
+          </svg>
+        </div>
+        <h1 id="assistant-title" class="title">Hurricane Claim Assistant</h1>
+      </div>  <div id="answer" class="answer-box suggestions-mode empty" aria-live="polite"></div>
+
+  <form id="ask-form">
     <label class="sr-only" for="question">Your question</label>
     <div class="input-row">
       <textarea id="question" name="question" placeholder="Type your question…" required></textarea>
@@ -131,8 +224,20 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
         <span id="btn-spinner" class="spinner"></span>
         <span id="btn-text">Ask</span>
       </button>
+      <button id="clear-btn" type="button" aria-label="Clear question">Clear</button>
     </div>
   </form>
+
+  <div class="footer">
+    <div class="firm-name">Karkatselos Law, PLLC</div>
+    <a class="call-btn" href="tel:8134455780" aria-label="Call now">Call 813-445-5780</a>
+    <div class="contact" aria-label="Contact information">
+      <div><strong>Phone:</strong> <a id="contact-phone" href="tel:8134455780">813-445-5780</a></div>
+      <div><strong>Office:</strong> <a id="contact-map" href="https://maps.google.com/?q=5331%20Primrose%20Lake%20Circle%2C%20Suite%20212%2C%20Tampa%2C%20FL%2033647" target="_blank" rel="noopener">5331 Primrose Lake Circle, Suite 212, Tampa, FL 33647</a></div>
+      <div><strong>Contact form:</strong> <a id="contact-form-link" href="https://www.yourpropertyadvocate.com/lp/hurricane-damage-ppc_lp/#contactform" target="_blank" rel="noopener">Open form</a></div>
+    </div>
+    <div class="disclaimer">General information only—no legal advice. No attorney–client relationship is formed by using this assistant.</div>
+  </div>
 </div>
   </div>  <script>
     // CONFIG
@@ -142,26 +247,35 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
 
     // Suggested questions
     const SUGGESTED_QUESTIONS = [
+      "How do I schedule an appointment?",
       "Do you charge any upfront fees?",
       "How does the free consultation work?",
       "Do you help if my claim was denied or underpaid?",
       "What areas do you serve in Tampa Bay?",
-      "What kind of results have you achieved?"
+      "Who is E. Tim Karkatselos?"
     ];
 
     // Relevance guard
     const RELEVANCE_KEYWORDS = [
       "hurricane","storm","wind","roof","leak","damage","water","flood","property","property damage",
       "insurance","claim","claims","denied","underpaid","low offer","adjuster","attorney","law","law firm",
-      "consultation","free consultation","no fees","zero upfront","contingency",
+      "consultation","consultations","free consultation","no fees","fee","fees","upfront","contingency","cost","costs","price","pricing",
+      "appointment","appointments","schedule","scheduling","scheduled","book","booking","set up","set-up",
+      "contact form","form",
+      "karkatselos","e. tim","managing partner","national trial lawyers","top 40 under 40","civil plaintiff",
       "tampa","pinellas","hillsborough","pasco","tampa bay","florida",
-      "karkatselos","your property advocate","results","successes",
+      "results","success","successes",
       "office","address","location","contact","call","phone","813","map"
     ];
-    function isRelevant(q) {
-      const qs = (q || "").toLowerCase();
-      return RELEVANCE_KEYWORDS.some(kw => qs.includes(kw));
-    }
+    const isRelevant = (q) => {
+      const s = (q || "").toLowerCase();
+      return RELEVANCE_KEYWORDS.some(k => s.includes(k));
+    };
+
+    // Suggestion bypass flag
+    let fromSuggestion = false;
+
+    const box = document.getElementById("answer");
 
     function setLoading(loading) {
       const btn = document.getElementById("submit-btn");
@@ -173,8 +287,7 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
     }
 
     function showAnswer(text, opts = {}) {
-      const box = document.getElementById("answer");
-      box.classList.toggle("empty", !text);
+      box.classList.remove("empty", "suggestions-mode");
       if (!text) {
         renderSuggestions();
       } else {
@@ -194,44 +307,66 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question })
       });
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error("Backend error: " + (t || res.status));
-      }
+      if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       return data.answer || "";
     }
 
-    // Demo answers
+    // Concise demo answers
     function demoAnswer(question) {
       const q = question.toLowerCase();
+
+      // Scheduling
+      if (q.includes("appointment") || q.includes("schedule") || q.includes("book") || q.includes("set up")) {
+        return "Call 813-445-5780 or complete the CONTACT form to schedule your free consultation.";
+      }
+
+      // Attorney
+      if (q.includes("karkatselos") || q.includes("who is") || q.includes("managing partner") || q.includes("attorney") || q.includes("lawyer")) {
+        return "E. Tim Karkatselos, managing partner at Karkatselos Law, represents residential and commercial property owners in insurance claims. Recognized by The National Trial Lawyers: Top 40 Under 40 Civil Plaintiff Trial Lawyers in Florida.";
+      }
+
+      // Fees
       if (q.includes("fee") || q.includes("fees") || q.includes("upfront") || q.includes("contingency") || q.includes("cost") || q.includes("price")) {
-        return "Consultation is free. The firm typically operates on a contingency basis—no attorney fees unless there’s a recovery.";
+        return "Free consultation. No upfront fees. Contingency—no attorney fees unless there’s a recovery.";
       }
+
+      // Consultation
       if (q.includes("consultation")) {
-        return "Schedule your free consultation from this page or by calling 813-445-5780. We’ll review your situation and outline next steps.";
+        return "Call 813-445-5780 or use the CONTACT form to request your free consultation.";
       }
+
+      // Denied/underpaid
       if (q.includes("denied") || q.includes("underpaid") || q.includes("low offer")) {
-        return "Yes—if your hurricane damage claim was denied or underpaid, the firm can evaluate the decision and push for a fair result.";
+        return "Yes. We evaluate denied or underpaid hurricane claims and push for a fair result.";
       }
+
+      // Service area
       if (q.includes("area") || q.includes("serve") || q.includes("tampa") || q.includes("pinellas") || q.includes("hillsborough") || q.includes("pasco")) {
-        return "The page focuses on the Tampa Bay Area, including Hillsborough, Pinellas, and Pasco counties.";
+        return "The law firm focuses on the Tampa Bay Area, including Hillsborough, Pinellas, and Pasco counties.";
       }
+
+      // Results
       if (q.includes("result") || q.includes("success")) {
-        return "Recent success themes include full roof replacements secured and payment for interior water damages after reversing insurer denials.";
+        return "Highlighted results: full roof replacements and interior water damage payments after reversing insurer denials.";
       }
+
+      // Address
       if (q.includes("address") || q.includes("office") || q.includes("location")) {
         return "Office: 5331 Primrose Lake Circle, Suite 212, Tampa, FL 33647.";
       }
-      if (q.includes("call") || q.includes("phone") || q.includes("contact")) {
-        return "Call 813-445-5780 or use the page form to schedule your free consultation.";
+
+      // Contact
+      if (q.includes("call") || q.includes("phone") || q.includes("contact") || q.includes("form")) {
+        return "Call 813-445-5780 or complete the CONTACT form on the landing page.";
       }
-      return "This page covers hurricane-claim help, free consultations, the Tampa Bay service area, and examples of results. Ask about any of these topics.";
+
+      // Fallback (concise, with firm name)
+      return "Karkatselos Law helps with hurricane insurance claims. Free consultation, no upfront fees. Tampa Bay service area: Hillsborough, Pinellas, Pasco.";
     }
 
     function renderSuggestions() {
-      const box = document.getElementById("answer");
-      box.classList.add("empty");
+      box.classList.add("empty", "suggestions-mode");
       box.innerHTML = `
         <div class="suggestions">
           <h3>Suggested questions</h3>
@@ -245,6 +380,7 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
           const q = li.getAttribute("data-q");
           const input = document.getElementById("question");
           input.value = q;
+          fromSuggestion = true;
           document.getElementById("ask-form").requestSubmit();
         });
       });
@@ -256,7 +392,7 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
       const question = input.value.trim();
       if (!question) return;
 
-      if (!isRelevant(question)) {
+      if (!fromSuggestion && !isRelevant(question)) {
         showAnswer(IRRELEVANT_MESSAGE);
         return;
       }
@@ -264,7 +400,7 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
       setLoading(true);
       try {
         const answer = DEMO_MODE
-          ? (await new Promise(r => setTimeout(r, 400)), demoAnswer(question))
+          ? (await new Promise(r => setTimeout(r, 300)), demoAnswer(question))
           : await askBackend(question);
         showAnswer(answer);
       } catch (err) {
@@ -274,7 +410,17 @@ button:disabled { opacity: .65; cursor: not-allowed; background: #e8c27a; }
         setLoading(false);
         input.focus();
         input.select();
+        fromSuggestion = false;
       }
+    });
+
+    // Clear button: reset input and restore suggestions
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      const input = document.getElementById("question");
+      input.value = "";
+      fromSuggestion = false;
+      renderSuggestions();
+      input.focus();
     });
 
     // Initial render
